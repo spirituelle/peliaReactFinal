@@ -19,8 +19,6 @@ import callerTone from './../../assets/media/callertone.mp3'
 
 import './../../assets/css/video-call.css';
 
-// Cookies.set("medecinAuth", "adil")
-
 export default function CallUsers(props){
     let medecin = Cookies.get('medecinAuth')
     let isMedecin = (medecin === undefined) ? false: true;
@@ -66,7 +64,6 @@ class ElemenetsCall extends Component {
     componentDidMount() {
         
         if(this.state.isMedecin){
-            // let user = this.props.medecin
             let token = Cookies.get('token')
             let userObject = JSON.parse(Cookies.get('user'))
             this.setState({user: userObject})
@@ -86,20 +83,21 @@ class ElemenetsCall extends Component {
         }
     }
     componentDidUpdate(){
-        let {stream, isCallVideo, isCallAudio, responding, isMedecin} = this.state
+        let {stream, isCallVideo, isCallAudio, responding, isMedecin, myStream} = this.state
         if(isCallVideo && !responding){
+
             try {
-                this.myVideo.srcObject = stream
+                this.myVideo.srcObject = myStream
             } catch (e) {
-                this.myVideo.src = URL.createObjectURL(stream)
+                this.myVideo.src = URL.createObjectURL(myStream)
             }
             this.myVideo.play();
         }
         else if(isCallAudio && !responding){
             try {
-                this.myAudio.srcObject = stream;
+                this.myAudio.srcObject = myStream;
             } catch (e) {
-                this.myAudio.src = URL.createObjectURL(stream)
+                this.myAudio.src = URL.createObjectURL(myStream)
             }
             this.myAudio.play();
         }
@@ -125,6 +123,18 @@ class ElemenetsCall extends Component {
                 })
         });
     }
+    initiatorMyCallVideo(){
+        return new Promise((res, rej) => {
+            navigator.mediaDevices.getUserMedia({video: true})
+                .then((stream) => {
+                    this.setState({ myStream : stream, isCallVideo:true})
+                    res(stream);
+                })
+                .catch(err => {
+                    throw new Error(`Unable to fetch stream ${err}`)
+                })
+        });
+    }
 
     initiatorCallAudio(){
         return new Promise((res, rej) => {
@@ -136,6 +146,13 @@ class ElemenetsCall extends Component {
                 .catch(err => {
                     throw new Error(`Unable to fetch stream ${err}`);
                 })
+        });
+    }
+
+    initiatoMyrCallAudio(){
+        return new Promise((res, rej) => {
+            this.setState({myStream : null});
+            res(null);
         });
     }
 
@@ -232,6 +249,17 @@ class ElemenetsCall extends Component {
     }
     callVideoTo(){
         this.setState({passingCallVideoPocess: true})
+        this.initiatorMyCallVideo().then( () =>
+            this.initiatorCallVideo()
+            .then(stream =>{
+                this.channel.trigger(`client-call-${this.patientId}`, {
+                    type: 'call-video',
+                    userName: this.state.user.prenom,
+                    data:{from: this.state.user.prenom}
+                })
+                this.setState({passingCallVideoPocess: false})
+            })
+        )
         this.initiatorCallVideo()
         .then(stream =>{
             this.channel.trigger(`client-call-${this.patientId}`, {
@@ -245,14 +273,17 @@ class ElemenetsCall extends Component {
     }
     callTo() {
         this.setState({passingCallPocess: true})
-        this.initiatorCallAudio().then(stream =>{
-            this.channel.trigger(`client-call-${this.patientId}`, {
-                type: 'call-audio',
-                userName: this.state.user.prenom,
-                data:{from: this.state.user.prenom}
-            });
-            this.setState({passingCallPocess: false})
-        })
+        this.initiatoMyrCallAudio().then(stream =>
+            this.initiatorCallAudio().then(stream =>{
+                this.channel.trigger(`client-call-${this.patientId}`, {
+                    type: 'call-audio',
+                    userName: this.state.user.prenom,
+                    data:{from: this.state.user.prenom}
+                });
+                this.setState({passingCallPocess: false})
+            })
+        )
+     
     }
     confirmCall(){
         this.peers[this.state.callFrom] = this.startPeer(this.state.callFrom);
